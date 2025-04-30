@@ -7,11 +7,8 @@ from typing import AsyncIterator
 
 from mcp.server import Server
 from mcp.types import TextContent, Tool
-from mcp_server_youtube.youtube import (
-    YouTubeClientError,
-    YouTubeSearcher,
-    get_youtube_searcher,
-)
+from mcp_server_youtube.youtube import (YouTubeClientError, YouTubeSearcher,
+                                        get_youtube_searcher)
 from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -29,10 +26,10 @@ class YouTubeSearchRequest(BaseModel):
     """Input schema for the youtube_search_and_transcript tool."""
 
     query: str = Field(..., description="The search query string for YouTube videos.")
-    max_results: int | None = Field(
+    max_results: int = Field(
         default=3, description="Maximum number of video results to return.", ge=1, le=20
     )
-    transcript_language: str | None = Field(
+    transcript_language: str = Field(
         default="en",
         description="The language code for the transcript (e.g., 'en', 'es').",
     )

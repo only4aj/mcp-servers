@@ -8,10 +8,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # --- Custom Error Classes --- #
 
+
 class CalculatorError(Exception):
     # Base class for calculator-related errors.
     # Allows catching specific errors from this module.
     pass
+
 
 class InvalidOperationError(CalculatorError):
     # Raised when an unsupported operation is requested.

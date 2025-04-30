@@ -11,13 +11,10 @@ from typing import Literal
 
 from mcp.server import Server
 from mcp.types import TextContent, Tool
-
 # --- Calculator Module Imports ---
-from mcp_server_calculator.calculator import (
-    CalculatorClient,
-    CalculatorError,
-    get_calculator_client,
-)
+from mcp_server_calculator.calculator import (CalculatorClient,
+                                              CalculatorError,
+                                              get_calculator_client)
 from pydantic import BaseModel, Field, ValidationError
 
 logger = logging.getLogger(__name__)
@@ -43,6 +40,7 @@ class CalculatorRequest(BaseModel):
 ## Feel free to add more tool names here!
 ## Each tool should have its own name
 
+
 class ToolNames(StrEnum):
     CALCULATE = "calculate"
 
@@ -50,9 +48,10 @@ class ToolNames(StrEnum):
 # --- Lifespan Management for MCP Server --- #
 # Lifespan is usually used for initializing and cleaning up resources
 # when using some external API's or Databases
-# 
+#
 # It also can be used for stroing shared dependencies, like in this case
 # (A single CalculatorClient instance is being shared)
+
 
 @asynccontextmanager
 async def server_lifespan(server: Server) -> AsyncIterator[dict]:
@@ -124,7 +123,7 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
     match name:
         ## Feel free to add more cases here!
         ## Each listed tool should have its own case
-        
+
         case ToolNames.CALCULATE.value:
             try:
                 # 1. Validate Input
