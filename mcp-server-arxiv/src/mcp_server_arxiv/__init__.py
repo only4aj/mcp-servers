@@ -1,14 +1,22 @@
-"""Arxiv client module for the MCP server."""
+"""MCP Server ArXiv Module."""
 
-from .arxiv_client import ArxivService, get_arxiv_service, ArxivResultDict
-from .arxiv_client import ArxivConfig, ArxivClientError, ArxivApiError, ArxivConfigError
+
+from mcp_server_arxiv.arxiv import (
+    _ArxivService,
+    get_arxiv_service,
+    ArxivSearchResult,
+    ArxivConfig,
+    ArxivApiError,
+    ArxivConfigError
+)
+from mcp_server_arxiv.arxiv.config import ArxivServiceError
 
 __all__ = [
-    "ArxivService",
+    "_ArxivService",
     "get_arxiv_service",
-    "ArxivResultDict",
+    "ArxivSearchResult",
     "ArxivConfig",
-    "ArxivClientError",
+    "ArxivServiceError",
     "ArxivApiError",
     "ArxivConfigError",
 ]
