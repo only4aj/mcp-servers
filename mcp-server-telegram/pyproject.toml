@@ -1,0 +1,46 @@
+[project]
+name = "mcp-server-telegram"
+version = "0.1.0"
+description = "MCP Server providing a tool to post messages to a Telegram channel."
+
+authors = [
+    { name = "Your Name", email = "your.email@example.com" },
+]
+readme = "README.md"
+requires-python = ">=3.11"
+
+
+dependencies = [
+    "mcp>=1.6.0,<2.0.0",
+    "starlette>=0.37.0",
+    "pydantic-settings>=2.0",
+    "python-dotenv",
+    "uvicorn[standard]",
+    "requests",  # Added for Telegram API calls
+    "langchain_mcp_adapters",  
+]
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "httpx",
+    "ruff",
+    "black",
+    "isort",
+]
+
+# --- Tool Configurations --- #
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+select = ["E", "F", "I", "W", "C90", "N", "D"]
+ignore = ["D100", "D104", "D107", "D203", "D212"]
+
+[tool.black]
+line-length = 88
+target-version = ["py312"]
+
+[tool.isort]
+profile = "black"
+line_length = 88
