@@ -16,7 +16,7 @@ dependencies = [
     "fastapi>=0.115.12",
     # Qdrant-specific dependencies
     "qdrant-client>=1.7.0",
-    "sentence-transformers>=2.2.0",
+    "fastembed>=0.7.0",
 ]
 
 [dependency-groups]

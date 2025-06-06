@@ -10,6 +10,7 @@ from mcp_server_qdrant.qdrant.embeddings.base import EmbeddingProvider
 # Get module-level logger
 logger = logging.getLogger(__name__)
 
+
 class FastEmbedProvider(EmbeddingProvider):
     """
     FastEmbed implementation of the embedding provider.

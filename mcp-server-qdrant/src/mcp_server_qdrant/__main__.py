@@ -1,12 +1,11 @@
 import argparse
 import logging
 import os
+
 import uvicorn
 from fastapi import FastAPI
 
-from mcp_server_qdrant.logging_config import (configure_logging,
-                                            logging_level)
-
+from mcp_server_qdrant.logging_config import configure_logging, logging_level
 from mcp_server_qdrant.server import mcp_server
 
 configure_logging()
@@ -14,19 +13,20 @@ logger = logging.getLogger(__name__)
 
 # --- Application Factory --- #
 
+
 def create_app() -> FastAPI:
     """Create a FastAPI application that can serve the provided mcp server with SSE."""
     # Create the MCP ASGI app
     mcp_app = mcp_server.http_app(path="/mcp", transport="streamable-http")
-    
+
     # Create FastAPI app
     app = FastAPI(
         title="Qdrant MCP Server",
         description="MCP server for vector database operations using Qdrant",
         version="1.0.0",
-        lifespan=mcp_app.router.lifespan_context
-    )   
-    
+        lifespan=mcp_app.router.lifespan_context,
+    )
+
     # Mount MCP server
     app.mount("/mcp-server", mcp_app)
 
@@ -43,7 +43,9 @@ if __name__ == "__main__":
     parser.add_argument(
         "--port",
         type=int,
-        default=int(os.getenv("MCP_QDRANT_PORT", "8002")), # Default port 8002 for Qdrant
+        default=int(
+            os.getenv("MCP_QDRANT_PORT", "8002")
+        ),  # Default port 8002 for Qdrant
         help="Port to listen on (Default: MCP_QDRANT_PORT or 8002)",
     )
     parser.add_argument(
@@ -63,5 +65,5 @@ if __name__ == "__main__":
         port=args.port,
         reload=args.reload,
         log_level=logging_level.lower(),
-        factory=True
+        factory=True,
     )
