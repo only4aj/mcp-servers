@@ -91,46 +91,45 @@ async def main():
     model = ChatOpenAI(model="gpt-4")
     
     # Connect to MCP server
-    async with MultiServerMCPClient({
-        "calculate": {
-            "url": "http://localhost:8000/sse",
-            "transport": "sse",
+    client = MultiServerMCPClient(
+        {
+        "image-generation": {
+            "url": "https://localhost:8000",
+            "transport": "streamable_http",}
         }
-    }) as client:
-        # Get available tools
-        tools = client.get_tools()
-        
-        # !! IMPORTANT : Get tools and modify them to have return_direct=True!!! 
-        # Otherwise langgraph agent could fall in an eternal loop,
-        # ignoring tool results
-        tools: list[StructuredTool] = client.get_tools()
-        for tool in tools:
-            tool.return_direct = True
+    )
+            
+    # !! IMPORTANT : Get tools and modify them to have return_direct=True!!! 
+    # Otherwise langgraph agent could fall in an eternal loop,
+    # ignoring tool results
+    tools: list[StructuredTool] = await client.get_tools()
+    for tool in tools:
+        tool.return_direct = True
 
-        # Use case 1: Create agent with tools
-        agent = create_react_agent(model, tools)
-        
-        # Example query using the calculator
-        response = await agent.ainvoke({
-            "messages": [{
-                "role": "user",
-                "content": "What is 15% of 850, rounded to 2 decimal places?"
-            }]
-        })
-        
-        print(response["messages"][-1].content)
+    # Use case 1: Create agent with tools
+    agent = create_react_agent(model, tools)
+    
+    # Example query using the calculator
+    response = await agent.ainvoke({
+        "messages": [{
+            "role": "user",
+            "content": "What is 15% of 850, rounded to 2 decimal places?"
+        }]
+    })
+    
+    print(response["messages"][-1].content)
 
-        # Use case 2: Run tool directly: 
-        
-        
-        # !IMPORTANT
-        # Always set tool_call_id to some value: otherwise 
-        # tool cool would not return any artifacts beyond text
-        # https://github.com/langchain-ai/langchain/issues/29874
-        result: ToolMessage = await tool.arun(parameters, 
-                                              response_format='content_and_artifact',  
-                                              tool_call_id=uuid.uuid4())
-        print("Tool result:", result)
+    # Use case 2: Run tool directly: 
+    
+    
+    # !IMPORTANT
+    # Always set tool_call_id to some value: otherwise 
+    # tool cool would not return any artifacts beyond text
+    # https://github.com/langchain-ai/langchain/issues/29874
+    result: ToolMessage = await tool.arun(parameters, 
+                                            response_format='content_and_artifact',  
+                                            tool_call_id=uuid.uuid4())
+    print("Tool result:", result)
 
 if __name__ == "__main__":
     asyncio.run(main())

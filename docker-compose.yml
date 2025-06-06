@@ -1,0 +1,175 @@
+x-qdrant-config: &qdrant-config
+  # Qdrant connection settings for debugging
+  QDRANT_HOST: qdrant
+  QDRANT_PORT: 6333
+  QDRANT_GRPC_PORT: 6334
+  QDRANT_API_KEY: ""  # No API key needed for local development
+  
+x-postgres-config: &postgres-config
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  POSTGRES_DB: mcpdb
+
+services:
+
+  mcp_server_telegram:
+    build:
+      context: ./mcp-server-telegram
+      dockerfile: Dockerfile
+    image: mcp_server_telegram
+    container_name: mcp_server_telegram
+    command: ["python", "-m", "mcp_server_telegram", "--port", "8000"]
+    ports:
+      - "8007:8000"
+    env_file:
+      - ./mcp-server-telegram/.env
+    restart: unless-stopped
+
+  mcp_server_youtube:
+    build:
+      context: ./mcp-server-youtube
+      dockerfile: Dockerfile
+    image: mcp_server_youtube
+    container_name: mcp_server_youtube
+    command: ["python", "-m", "mcp_server_youtube", "--port", "8000"]
+    ports:
+      - "8009:8000"
+    env_file:
+      - ./mcp-server-youtube/.env
+    restart: unless-stopped
+
+  mcp_server_imgen:
+    build:
+      context: ./mcp-server-imgen
+      dockerfile: Dockerfile
+    image: mcp_server_imgen
+    container_name: mcp_server_imgen
+    command: ["python", "-m", "mcp_server_imgen", "--port", "8000"]
+    ports:
+      - "8003:8000"
+    env_file:
+      - ./mcp-server-imgen/.env
+    restart: unless-stopped
+
+  mcp_server_cartesia:
+    build:
+      context: ./mcp-server-cartesia
+      dockerfile: Dockerfile
+    image: mcp_server_cartesia
+    container_name: mcp_server_cartesia
+    command: ["python", "-m", "mcp_server_cartesia", "--port", "8000"]
+    ports:
+      - "8002:8000"
+    env_file:
+      - ./mcp-server-cartesia/.env
+    restart: unless-stopped
+
+  mcp_server_tavily:
+    build:
+      context: ./mcp-server-tavily
+      dockerfile: Dockerfile
+    image: mcp_server_tavily
+    container_name: mcp_server_tavily
+    command: ["python", "-m", "mcp_server_tavily", "--port", "8000"]
+    ports:
+      - "8006:8000"
+    env_file:
+      - ./mcp-server-tavily/.env
+    restart: unless-stopped
+
+  mcp_server_arxiv:
+    build:
+      context: ./mcp-server-arxiv
+      dockerfile: Dockerfile
+    image: mcp_server_arxiv
+    container_name: mcp_server_arxiv
+    command: ["python", "-m", "mcp_server_arxiv", "--port", "8000"]
+    ports:
+      - "8001:8000"
+    env_file:
+      - ./mcp-server-arxiv/.env
+    restart: unless-stopped
+
+  mcp_server_qdrant:
+    build:
+      context: ./mcp-server-qdrant
+      dockerfile: Dockerfile
+    image: mcp_server_qdrant
+    container_name: mcp_server_qdrant
+    command: ["python", "-m", "mcp_server_qdrant", "--port", "8000"]
+    ports:
+      - "8005:8000"
+    env_file:
+      - ./mcp-server-qdrant/.env
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+  mcp_server_twitter:
+    build:
+      context: ./mcp-server-twitter
+      dockerfile: Dockerfile
+    image: mcp_server_twitter
+    container_name: mcp_server_twitter
+    command: ["python", "-m", "mcp_server_twitter", "--port", "8000"]
+    ports:
+      - "8008:8000"
+    env_file:
+      - ./mcp-server-twitter/.env
+    restart: unless-stopped
+
+  mcp_server_postgres:
+    build:
+      context: ./mcp-server-postgres
+      dockerfile: Dockerfile
+    image: mcp_server_postgres
+    container_name: mcp_server_postgres
+    command: ["python", "-m", "mcp_server_postgres", "--port", "8000"]
+    ports:
+      - "8004:8000"
+    env_file:
+      - ./mcp-server-postgres/.env
+    restart: unless-stopped
+
+  mcp_server_calculator:
+    build:
+      context: ./mcp-server-template
+      dockerfile: Dockerfile
+    image: mcp_server_calculator
+    container_name: mcp_server_calculator
+    command: ["python", "-m", "mcp_server_calculator", "--port", "8000"]
+    ports:
+      - "8006:8000"
+    env_file:
+      - ./mcp-server-template/.env
+    restart: unless-stopped
+
+  mcp_server_stability:
+    build:
+      context: ./mcp-server-stability
+      dockerfile: Dockerfile
+    image: mcp_server_stability
+    container_name: mcp_server_stability
+    command: ["python", "-m", "mcp_server_stable_diffusion", "--port", "8000"]
+    ports:
+      - "8007:8000"
+    env_file:
+      - ./mcp-server-stability/.env
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant_storage
+    volumes:
+      - qdrant-data:/qdrant/storage
+    ports:
+      - "6333:6333"  # REST API
+      - "6334:6334"  # gRPC
+    environment:
+      <<: *qdrant-config
+    restart: unless-stopped
+
+volumes:
+  qdrant-data:

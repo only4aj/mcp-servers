@@ -98,6 +98,15 @@ class YouTubeSearcher:
                         video_id = search_item.get("id", {}).get("videoId")
 
                         if video_id:
+                            try:
+                                transcript = self._get_transcript_by_id(video_id, language)
+                            except YouTubeTranscriptError as transcript_error:
+                                logger.warning(f"Transcript unavailable for video {video_id}: {transcript_error}")
+                                transcript = f"[Transcript unavailable: {transcript_error.message}]"
+                            except Exception as transcript_error:
+                                logger.warning(f"Unexpected transcript error for video {video_id}: {transcript_error}")
+                                transcript = "[Transcript unavailable: Unable to retrieve transcript]"
+                            
                             video = YouTubeVideo(
                                 video_id=video_id,
                                 title=snippet.get("title", "N/A"),
@@ -107,9 +116,7 @@ class YouTubeSearcher:
                                 thumbnail=snippet.get("thumbnails", {})
                                 .get("default", {})
                                 .get("url", "N/A"),
-                                transcript=self._get_transcript_by_id(
-                                    video_id, language
-                                ),
+                                transcript=transcript,
                             )
                             found_videos.append(video)
                         else:
@@ -169,7 +176,20 @@ class YouTubeSearcher:
             # Fetch the actual transcript data
             transcript_entries = transcript.fetch()
 
-            transcript_text = "\n".join([entry["text"] for entry in transcript_entries])
+            # Handle both dictionary format and FetchedTranscriptSnippet objects
+            transcript_text_parts = []
+            for entry in transcript_entries:
+                if hasattr(entry, 'text'):
+                    # New format: FetchedTranscriptSnippet object
+                    transcript_text_parts.append(entry.text)
+                elif isinstance(entry, dict) and 'text' in entry:
+                    # Old format: dictionary
+                    transcript_text_parts.append(entry['text'])
+                else:
+                    # Fallback: convert to string
+                    transcript_text_parts.append(str(entry))
+            
+            transcript_text = "\n".join(transcript_text_parts)
             logger.info(f"Successfully fetched transcript for video ID: {video_id}")
             return transcript_text
 

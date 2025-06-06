@@ -1,40 +1,56 @@
 import logging
 import base64
 import io
+import ssl
+import asyncio
 from functools import lru_cache
+import aiohttp
 import tweepy
 from tweepy import API, Client
+from tweepy.asynchronous import AsyncClient
 from dotenv import load_dotenv
+
 logger = logging.getLogger(__name__)
 
-class TwitterClient:
+
+class AsyncTwitterClient:
     def __init__(self, config):
         """
         Initialize Twitter API client with provided configuration.
         """
         self.config = config
-        self.client = Client(
+
+        # Create a custom SSL context
+        self.ssl_context = ssl.create_default_context()
+        self.ssl_context.check_hostname = True
+        self.ssl_context.verify_mode = ssl.CERT_REQUIRED
+
+        self.client = AsyncClient(
             consumer_key=config.API_KEY,
             consumer_secret=config.API_SECRET_KEY,
             access_token=config.ACCESS_TOKEN,
             access_token_secret=config.ACCESS_TOKEN_SECRET,
             wait_on_rate_limit=True
         )
-        auth = tweepy.OAuthHandler(config.API_KEY, config.API_SECRET_KEY)
-        auth.set_access_token( config.ACCESS_TOKEN , config.ACCESS_TOKEN_SECRET)
-        self.api = API(auth, wait_on_rate_limit=True)
 
-    def _upload_media(self, image_content_str: str):
+        auth = tweepy.OAuthHandler(config.API_KEY, config.API_SECRET_KEY)
+        auth.set_access_token(config.ACCESS_TOKEN, config.ACCESS_TOKEN_SECRET)
+        self._sync_api = API(auth, wait_on_rate_limit=True)
+
+    async def _upload_media(self, image_content_str: str):
         """
         Internal method to upload media to Twitter.
+        Note: Using sync client as Tweepy doesn't support async media upload yet.
         """
+        print("uploadadasdasdasdasasdas----------------------------------------------------------------------")
+        print(image_content_str)
         image_content = base64.b64decode(image_content_str)
         image_file = io.BytesIO(image_content)
         image_file.name = "image.png"
-        # Let Tweepy's errors propagate
-        return self.api.media_upload(filename=image_file.name, file=image_file)
+        # Use sync client for media upload
+        return self._sync_api.media_upload(filename=image_file.name, file=image_file)
 
-    def create_tweet(
+    async def create_tweet(
             self,
             text: str,
             image_content_str: str = None,
@@ -56,12 +72,12 @@ class TwitterClient:
             poll_duration (int, optional): Duration of the poll in minutes (must be
                 between 5 and config.poll_max_duration).
             in_reply_to_tweet_id (str, optional): The ID of an existing tweet to reply to.
-                Note: Your `text` must include “@username” of the tweet’s author.
+                Note: Your `text` must include "@username" of the tweet's author.
             quote_tweet_id (str, optional): The ID of an existing tweet to quote. The
                 quoted tweet will appear inline, with your `text` shown above it.
 
         Returns:
-            str: A success message ("tweet posted") if the tweet was created.
+            tweepy.Response: The response from Twitter API containing the created tweet data.
 
         Raises:
             ValueError: If poll_options length is out of bounds or poll_duration is invalid.
@@ -70,7 +86,7 @@ class TwitterClient:
         try:
             media_ids = []
             if image_content_str and self.config.media_upload_enabled:
-                media = self._upload_media(image_content_str)
+                media = await self._upload_media(image_content_str)
                 media_ids.append(media.media_id)
 
             poll_params = {}
@@ -84,98 +100,102 @@ class TwitterClient:
                     "poll_options": poll_options,
                     "poll_duration_minutes": poll_duration
                 }
-            self.client.create_tweet(
+            response = await self.client.create_tweet(
                 text=text[:self.config.max_tweet_length],
                 media_ids=media_ids or None,
                 in_reply_to_tweet_id=in_reply_to_tweet_id,
                 quote_tweet_id=quote_tweet_id,
                 **poll_params)
-            return "tweet posted"
+            return response.data["id"]
 
         except Exception as e:
             return str(e)
 
-    def retweet_tweet(self, tweet_id: str):
+    async def retweet_tweet(self, tweet_id: str):
         """
-        Retweet an existing tweet on behalf of the authenticated user.
+        Retweet an existing tweet asynchronously.
 
         Args:
-            tweet_id (str): The ID of the tweet to retweet.
+            tweet_id (str): The ID of the tweet to retweet
 
         Returns:
-            str: Success message confirming the retweet, e.g.,
-                "Successfully retweeted post <tweet_id>".
-
-        Raises:
-            Exception: Propagates any exception raised by the Twitter API client,
-                such as invalid tweet ID, already retweeted, or rate limit errors.
+            str: Success message
         """
         try:
-            self.client.retweet(tweet_id=tweet_id)
+            await self.client.retweet(tweet_id=tweet_id)
             return f"Successfully retweet post {tweet_id}"
         except Exception as e:
             return str(e)
 
-
-    def get_user_tweets(self, user_id: str, max_results: int = 10):
+    async def get_user_tweets(self, user_id: str, max_results: int = 10):
         """
-        Retrieve recent tweets posted by a specified user.
+        Retrieve recent tweets posted by a specified user asynchronously.
 
         Args:
-            user_id (str): The ID of the user whose tweets to fetch.
-            max_results (int, optional): The maximum number of tweets to return.
-                Must be between 1 and 100. Defaults to 10.
+            user_id (str): The ID of the user
+            max_results (int, optional): Maximum number of tweets to return
 
         Returns:
-            tweepy.Response or str:
-                - On success: A Tweepy Response object containing a list of tweets.
-                  Each tweet includes at least the fields "id", "text", and "created_at".
-                - On failure: An error message string.
-
-        Raises:
-            Exception: Propagates any exception raised by the Twitter API client,
-                such as invalid user ID, suspended account, or rate limit errors.
+            tweepy.Response: Response object with tweet data, or raises exception on error
         """
         try:
-            tweets = self.client.get_users_tweets(
-            id=user_id,
-            max_results=max_results,
-            tweet_fields=["id", "text", "created_at"])
+            tweets = await self.client.get_users_tweets(
+                id=user_id,
+                max_results=max_results,
+                tweet_fields=["id", "text", "created_at"]
+            )
             return tweets
         except Exception as e:
-            return str(e)
+            logger.error(f"Error getting user tweets for user_id {user_id}: {str(e)}")
+            if "401" in str(e) or "Unauthorized" in str(e):
+                logger.error("Twitter API 401 Unauthorized - This usually means:")
+                logger.error("1. Your Twitter app doesn't have 'Read' permissions")
+                logger.error("2. Your app needs Twitter API v2 'tweet.read' scope")
+                logger.error("3. You may need to regenerate your access tokens after changing permissions")
+                logger.error("4. For reading other users' tweets, you may need elevated access")
+            raise
 
-
-    def follow_user(self, user_id: str):
+    async def follow_user(self, user_id: str):
         """
-        Follow another Twitter user by their user ID.
+        Follow another Twitter user asynchronously.
 
         Args:
-            user_id (str): The ID of the user to follow.
+            user_id (str): The ID of the user to follow
 
         Returns:
-            str: Success message confirming the follow, e.g.,
-                "Successfully followed user: <user_id>".
-
-        Raises:
-            Exception: Propagates any exception raised by the Twitter API client,
-                such as attempting to follow a protected account, already following,
-                or rate limit errors.
+            str: Success message
         """
         try:
-            self.client.follow_user(user_id=user_id)
+            await self.client.follow_user(user_id=user_id)
             return f"Successfully followed user: {user_id}"
         except Exception as e:
             return str(e)
 
+    async def initialize(self):
+        """
+        Initialize and test the Twitter client connection.
+        """
+        try:
+            user = await self.client.get_me()
+            logger.info(f"Successfully authenticated as: {user.data['username']}")
+            return self
+        except Exception as e:
+            logger.error(f"Failed to authenticate: {str(e)}")
+            raise
 
-@lru_cache(maxsize=1)
-def get_twitter_client() -> TwitterClient:
-    logger.info("Creating TwitterClient instance...")
 
-    config = __import__('mcp_server_twitter.twitter.config', fromlist=['TwitterConfig']).TwitterConfig()
-    print(config)
-    client = TwitterClient(config=config)
-    user  = (client.client.get_me())
-    print(f"Authenticated as: {user.data['username']}")
-    return client
+_twitter_client: AsyncTwitterClient | None = None
+_client_lock = asyncio.Lock()
+
+async def get_twitter_client() -> AsyncTwitterClient:
+    global _twitter_client
+    if _twitter_client is not None:
+        return _twitter_client
+    async with _client_lock:
+        if _twitter_client is None:
+            logger.info("Creating AsyncTwitterClient instance…")
+            from .config import TwitterConfig
+            config = TwitterConfig()
+            client = AsyncTwitterClient(config=config)
+            _twitter_client = await client.initialize()
+        return _twitter_client

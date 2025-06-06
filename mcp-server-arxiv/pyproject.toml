@@ -17,6 +17,7 @@ dependencies = [
     # ArXiv-specific dependencies
     "arxiv>=2.0.0",
     "PyPDF2>=3.0.0",
+    "PyMuPDF>=1.23.0",
 ]
 
 [dependency-groups]

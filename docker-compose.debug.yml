@@ -1,0 +1,219 @@
+x-qdrant-config: &qdrant-config
+  # Qdrant connection settings for debugging
+  QDRANT_HOST: qdrant
+  QDRANT_PORT: 6333
+  QDRANT_GRPC_PORT: 6334
+  QDRANT_API_KEY: ""  # No API key needed for local development
+
+x-postgres-config: &postgres-config
+  # PostgreSQL connection settings for debugging
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: 5432
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: postgres
+  POSTGRES_DB: mcpdb
+
+services:
+  mcp_server_telegram:
+    build:
+      context: ./mcp-server-telegram
+      dockerfile: Dockerfile
+      target: dev
+    image: mcp_server_telegram-debug
+    container_name: mcp_server_telegram_debug
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5700", "--wait-for-client", "-m", "mcp_server_telegram", "--port", "8000", "--reload"]
+    ports:
+      - "8007:8000"
+      - "5700:5700"
+    volumes:
+      - ./mcp-server-telegram/src/mcp_server_telegram:/app/mcp_server_telegram:ro
+    env_file: ./mcp-server-telegram/.env
+    restart: unless-stopped
+    environment: {}
+
+  mcp_server_youtube:
+    build:
+      context: ./mcp-server-youtube
+      dockerfile: Dockerfile
+      target: dev
+    image: mcp_server_youtube-debug
+    container_name: mcp_server_youtube_debug
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5701", "--wait-for-client", "-m", "mcp_server_youtube", "--port", "8000", "--reload"]
+    ports:
+      - "8009:8000"
+      - "5701:5701"
+    volumes:
+      - ./mcp-server-youtube/src/mcp_server_youtube:/app/mcp_server_youtube:ro
+    env_file: ./mcp-server-youtube/.env
+    restart: unless-stopped
+    environment: {}
+
+  mcp_server_imgen:
+    build:
+      context: ./mcp-server-imgen
+      dockerfile: Dockerfile
+      target: dev
+    image: mcp_server_imgen-debug
+    container_name: mcp_server_imgen_debug
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "--wait-for-client", "-m", "mcp_server_imgen", "--port", "8000", "--reload"]
+    ports:
+      - "8003:8000"
+      - "5678:5678"
+    volumes:
+      - ./mcp-server-imgen/src/mcp_server_imgen:/app/mcp_server_imgen:ro
+    env_file: ./mcp-server-imgen/.env
+    restart: unless-stopped
+    environment: {}
+
+  mcp_server_cartesia:
+    build:
+      context: ./mcp-server-cartesia
+      dockerfile: Dockerfile
+      target: dev
+    image: mcp_server_cartesia-debug
+    container_name: mcp_server_cartesia_debug
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5702", "--wait-for-client", "-m", "mcp_server_cartesia", "--port", "8000", "--reload"]
+    ports:
+      - "8002:8000"
+      - "5702:5702"
+    volumes:
+      - ./mcp-server-cartesia/src/mcp_server_cartesia:/app/mcp_server_cartesia:ro
+    env_file: ./mcp-server-cartesia/.env
+    restart: unless-stopped
+    environment: {}
+
+  mcp_server_tavily:
+    build:
+      context: ./mcp-server-tavily
+      dockerfile: Dockerfile
+      target: dev
+    image: mcp_server_tavily-debug
+    container_name: mcp_server_tavily_debug
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5703", "--wait-for-client", "-m", "mcp_server_tavily", "--port", "8000", "--reload"]
+    ports:
+      - "8006:8000"
+      - "5703:5703"
+    volumes:
+      - ./mcp-server-tavily/src/mcp_server_tavily:/app/mcp_server_tavily:ro
+    env_file: ./mcp-server-tavily/.env
+    restart: unless-stopped
+    environment: {}
+
+  mcp_server_arxiv:
+    build:
+      context: ./mcp-server-arxiv
+      dockerfile: Dockerfile
+      target: dev
+    image: mcp_server_arxiv-debug
+    container_name: mcp_server_arxiv_debug
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5704", "--wait-for-client", "-m", "mcp_server_arxiv", "--port", "8000", "--reload"]
+    ports:
+      - "8001:8000"
+      - "5704:5704"
+    volumes:
+      - ./mcp-server-arxiv/src/mcp_server_arxiv:/app/mcp_server_arxiv:ro
+    env_file: ./mcp-server-arxiv/.env
+    restart: unless-stopped
+    environment: {}
+
+  mcp_server_qdrant:
+    build:
+      context: ./mcp-server-qdrant
+      dockerfile: Dockerfile
+      target: dev
+    image: mcp_server_qdrant-debug
+    container_name: mcp_server_qdrant_debug
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5680", "--wait-for-client", "-m", "mcp_server_qdrant", "--port", "8000", "--reload"]
+    ports:
+      - "8005:8000"
+      - "5680:5680"
+    volumes:
+      - ./mcp-server-qdrant/src/mcp_server_qdrant:/app/mcp_server_qdrant:ro
+    env_file: ./mcp-server-qdrant/.env
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+    environment: {}
+
+  mcp_server_twitter:
+    build:
+      context: ./mcp-server-twitter
+      dockerfile: Dockerfile
+      target: dev
+    image: mcp_server_twitter-debug
+    container_name: mcp_server_twitter_debug
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5705", "--wait-for-client", "-m", "mcp_server_twitter", "--port", "8008", "--reload"]
+    ports:
+      - "8008:8008"
+      - "5705:5705"
+    volumes:
+      - ./mcp-server-twitter/src/mcp_server_twitter:/app/mcp_server_twitter:ro
+    env_file: ./mcp-server-twitter/.env
+    restart: unless-stopped
+    environment: {}
+
+  mcp_server_postgres:
+    build:
+      context: ./mcp-server-postgres
+      dockerfile: Dockerfile
+      target: dev
+    image: mcp_server_postgres-debug
+    container_name: mcp_server_postgres_debug
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5679", "--wait-for-client", "-m", "mcp_server_postgres", "--port", "8000", "--reload"]
+    ports:
+      - "8004:8000"
+      - "5679:5679"
+    volumes:
+      - ./mcp-server-postgres/src/mcp_server_postgres:/app/mcp_server_postgres:ro
+    env_file: ./mcp-server-postgres/.env
+    restart: unless-stopped
+    environment: {}
+
+  mcp_server_calculator:
+    build:
+      context: ./mcp-server-template
+      dockerfile: Dockerfile
+      target: dev
+    image: mcp_server_calculator-debug
+    container_name: mcp_server_calculator_debug
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5706", "--wait-for-client", "-m", "mcp_server_calculator", "--port", "8000", "--reload"]
+    ports:
+      - "8006:8000"
+      - "5706:5706"
+    volumes:
+      - ./mcp-server-template/src/mcp_server_calculator:/app/mcp_server_calculator:ro
+    env_file: ./mcp-server-template/.env
+    restart: unless-stopped
+    environment: {}
+
+  mcp_server_stability:
+    build:
+      context: ./mcp-server-stability
+      dockerfile: Dockerfile
+      target: dev
+    image: mcp_server_stability-debug
+    container_name: mcp_server_stability_debug
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5707", "--wait-for-client", "-m", "mcp_server_stable_diffusion", "--port", "8000", "--reload"]
+    ports:
+      - "8007:8000"
+      - "5707:5707"
+    volumes:
+      - ./mcp-server-stability/src/mcp_server_stability:/app/mcp_server_stability:ro
+    env_file: ./mcp-server-stability/.env
+    restart: unless-stopped
+    environment: {}
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant_storage
+    volumes:
+      - qdrant-data:/qdrant/storage
+    ports:
+      - "6333:6333"  # REST API
+      - "6334:6334"  # gRPC
+    environment:
+      <<: *qdrant-config
+    restart: unless-stopped
+
+volumes:
+  qdrant-data:

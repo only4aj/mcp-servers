@@ -41,4 +41,4 @@ ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 8000
 
-CMD ["python", "-m", "mcp_server_tavily", "--port", "8000"]
+CMD ["python", "-m", "mcp_server_tavily", "--host", "0.0.0.0", "--port", "8000"]

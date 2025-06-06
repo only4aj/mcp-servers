@@ -1,193 +1,226 @@
+import json
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from enum import StrEnum
-from typing import Literal, Optional, List
+from typing import Any, List, Optional, Literal
 
-from mcp.server import Server
-from mcp.types import TextContent, Tool
-from pydantic import BaseModel, Field, ValidationError
-from .twitter import TwitterClient, get_twitter_client
+from fastmcp import FastMCP, Context
+from fastmcp.exceptions import ToolError
+
+from .twitter import AsyncTwitterClient, get_twitter_client
 
 logger = logging.getLogger(__name__)
 
 
-# Request Models
-class CreateTweetRequest(BaseModel):
-    text: str = Field(..., max_length=280)
-    image_content: Optional[str] = Field(None, description="Base64 encoded image content")
-    poll_options: Optional[List[str]] = Field(None, min_items=2, max_items=4)
-    poll_duration: Optional[int] = Field(None, ge=5, le=10080)
-    in_reply_to_tweet_id: Optional[str] = Field(None, description="tweet id of user to whom is replying")
-    quote_tweet_idd : Optional[str] = Field(None,description="tweet id of a tweet, which is being quoted")
-
-class RetweetTweetRequest(BaseModel):
-    tweet_id: str
-
-class GetTweetsRequest(BaseModel):
-    user_id: str
-    max_results: int = Field(10, ge=1, le=100)
 
 
-class FollowUserRequest(BaseModel):
-    user_id: str
 
-
-# Tool Names
-class ToolNames(StrEnum):
-    CREATE_TWEET = "create_tweet"
-    GET_USER_TWEETS = "get_user_tweets"
-    FOLLOW_USER = "follow_user"
-    RETWEET_TWEET = "retweet_tweet"
-
-
+# --- Lifespan Management --- #
 @asynccontextmanager
-async def server_lifespan(server: Server) -> AsyncIterator[dict]:
-    context = {}
+async def app_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
+    """Manage server startup/shutdown. Initializes the Twitter client."""
+    logger.info("Lifespan: Initializing Twitter client...")
+    
     try:
-        context["twitter_client"] = get_twitter_client()
-        yield context
-    except Exception as e:
-        logger.error(f"Lifespan error: {str(e)}", exc_info=True)
-        raise
+        # Initialize Twitter client
+        twitter_client: AsyncTwitterClient = await get_twitter_client()
+        
+        logger.info("Lifespan: Twitter client initialized successfully")
+        yield {"twitter_client": twitter_client}
+    
+    except Exception as init_err:
+        logger.error(f"FATAL: Lifespan initialization failed: {init_err}", exc_info=True)
+        raise init_err
+    
+    finally:
+        logger.info("Lifespan: Shutdown cleanup completed")
 
 
-server = Server("twitter-server", lifespan=server_lifespan)
+# --- MCP Server Initialization --- #
+mcp_server = FastMCP("twitter-server", lifespan=app_lifespan)
 
 
-@server.list_tools()
-async def list_tools() -> list[Tool]:
-    return [
-        Tool(
-            name=ToolNames.CREATE_TWEET,
-            description="""
-        Create a new tweet with optional media, polls, replies or quotes.
+# --- Tool Definitions --- #
 
-        Args:
-            text (str): The text content of the tweet. Will be truncated to the
-                configured maximum tweet length if necessary.
-            image_content_str (str, optional): A Base64-encoded string of image data
-                to attach as media. Requires media uploads to be enabled in config.
-            poll_options (list[str], optional): A list of 2 to N options (where N is
-                config.poll_max_options) to include in a poll.
-            poll_duration (int, optional): Duration of the poll in minutes (must be
-                between 5 and config.poll_max_duration).
-            in_reply_to_tweet_id (str, optional): The ID of an existing tweet to reply to.
-                Note: Your `text` must include “@username” of the tweet’s author.
-            quote_tweet_id (str, optional): The ID of an existing tweet to quote. The
-                quoted tweet will appear inline, with your `text` shown above it.
+@mcp_server.tool()
+async def create_tweet(
+    ctx: Context,
+    text: str,
+    image_content_str: Optional[str] = None,
+    poll_options: Optional[List[str]] = None,
+    poll_duration: Optional[int] = None,
+    in_reply_to_tweet_id: Optional[str] = None,
+    quote_tweet_id: Optional[str] = None
+) -> str:
+    """
+    Create a new tweet with optional media, polls, replies or quotes.
 
-        Returns:
-            str: A success message ("tweet posted") if the tweet was created.
+    Args:
+        text: The text content of the tweet. Will be truncated to the configured maximum tweet length if necessary.
+        image_content_str: A Base64-encoded string of image data to attach as media. Requires media uploads to be enabled in config.
+        poll_options: A list of 2 to 4 options to include in a poll.
+        poll_duration: Duration of the poll in minutes (must be between 5 and 10080).
+        in_reply_to_tweet_id: The ID of an existing tweet to reply to. Note: Your text must include "@username" of the tweet's author.
+        quote_tweet_id: The ID of an existing tweet to quote. The quoted tweet will appear inline, with your text shown above it.
 
-        Raises:
-            ValueError: If poll_options length is out of bounds or poll_duration is invalid.
-            Exception: Propagates any error from the Twitter API client or media upload.
-        """,
-            inputSchema=CreateTweetRequest.model_json_schema(),
-        ),
-        Tool(
-            name=ToolNames.GET_USER_TWEETS,
-            description= """
-        Retrieve recent tweets posted by a specified user.
-
-        Args:
-            user_id (str): The ID of the user whose tweets to fetch.
-            max_results (int, optional): The maximum number of tweets to return.
-                Must be between 1 and 100. Defaults to 10.
-
-        Returns:
-            tweepy.Response or str:
-                - On success: A Tweepy Response object containing a list of tweets.
-                  Each tweet includes at least the fields "id", "text", and "created_at".
-                - On failure: An error message string.
-
-        Raises:
-            Exception: Propagates any exception raised by the Twitter API client,
-                such as invalid user ID, suspended account, or rate limit errors.
-        """,
-            inputSchema=GetTweetsRequest.model_json_schema(),
-        ),
-        Tool(
-            name=ToolNames.FOLLOW_USER,
-            description="""
-        Follow another Twitter user by their user ID.
-
-        Args:
-            user_id (str): The ID of the user to follow.
-
-        Returns:
-            str: Success message confirming the follow, e.g., 
-                "Successfully followed user: <user_id>".
-
-        Raises:
-            Exception: Propagates any exception raised by the Twitter API client,
-                such as attempting to follow a protected account, already following,
-                or rate limit errors.
-        """,
-            inputSchema=FollowUserRequest.model_json_schema(),
-        ),
-        Tool(
-            name=ToolNames.RETWEET_TWEET,
-            description="""
-        Retweet an existing tweet on behalf of the authenticated user.
-
-        Args:
-            tweet_id (str): The ID of the tweet to retweet.
-
-        Returns:
-            str: Success message confirming the retweet, e.g., 
-                "Successfully retweeted post <tweet_id>".
-
-        Raises:
-            Exception: Propagates any exception raised by the Twitter API client,
-                such as invalid tweet ID, already retweeted, or rate limit errors.
-        """,
-            inputSchema=FollowUserRequest.model_json_schema(),
+    Returns:
+        Success message with tweet ID or error message.
+    """
+    client = ctx.request_context.lifespan_context["twitter_client"]
+    
+    try:
+        # Validate inputs
+        if poll_options and (len(poll_options) < 2 or len(poll_options) > 4):
+            raise ToolError("Poll must have 2-4 options")
+        
+        if poll_options and poll_duration and (poll_duration < 5 or poll_duration > 10080):
+            raise ToolError("Poll duration must be 5-10080 minutes")
+        
+        # Create tweet
+        result = await client.create_tweet(
+            text=text,
+            image_content_str=image_content_str,
+            poll_options=poll_options,
+            poll_duration=poll_duration,
+            in_reply_to_tweet_id=in_reply_to_tweet_id,
+            quote_tweet_id=quote_tweet_id
         )
-    ]
-
-
-@server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    client: TwitterClient = server.request_context.lifespan_context.get("twitter_client")
-
-    try:
-        match name:
-            case ToolNames.CREATE_TWEET:
-                request = CreateTweetRequest(**arguments)
-                response = client.create_tweet(
-                    text=request.text,
-                    image_content_str=request.image_content,
-                    poll_options=request.poll_options,
-                    poll_duration=request.poll_duration
-                )
-                return [TextContent(text=f"Tweet created: {response}")]
-
-            case ToolNames.GET_USER_TWEETS:
-                request = GetTweetsRequest(**arguments)
-                response = client.get_user_tweets(
-                    user_id=request.user_id,
-                    max_results=request.max_results
-                )
-                tweets = "\n".join([t.text for t in response.data])
-                return [TextContent(text=f"Recent tweets:\n{tweets}")]
-
-            case ToolNames.FOLLOW_USER:
-                request = FollowUserRequest(**arguments)
-                response = client.follow_user(request.user_id)
-                return [TextContent(text=f"Following user: {request.user_id}")]
-
-            case ToolNames.RETWEET_TWEET:
-                request = RetweetTweetRequest(**arguments)
-                response = client.retweet_tweet(request.tweet_id)
-                return [TextContent(text=f"Retweeting tweet: {request.tweet_id}")]
-
-            case _:
-                return [TextContent(text=f"Unknown tool: {name}")]
-
-    except ValidationError as ve:
-        return [TextContent(text=f"Validation error: {str(ve)}")]
+        
+        # Check if the result is an error string or a tweet ID
+        if isinstance(result, str) and ("Error" in result or "error" in result):
+            raise ToolError(f"Tweet creation failed: {result}")
+        else:
+            return f"Tweet created successfully with ID: {result}"
+            
+    except ToolError:
+        raise
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}", exc_info=True)
-        return [TextContent(text=f"Server error: {str(e)}")]
+        error_msg = str(e)
+        if "403" in error_msg or "Forbidden" in error_msg:
+            raise ToolError("Tweet creation forbidden. Check content policy or API permissions")
+        elif "401" in error_msg or "Unauthorized" in error_msg:
+            raise ToolError("Unauthorized. Check Twitter API credentials and permissions")
+        elif "duplicate" in error_msg.lower():
+            raise ToolError("Duplicate tweet. This content has already been posted")
+        else:
+            raise ToolError(f"Error creating tweet: {error_msg}")
+
+
+@mcp_server.tool()
+async def get_user_tweets(
+    ctx: Context,
+    user_ids: List[str],
+    max_results: int = 10
+) -> str:
+    """
+    Retrieve recent tweets posted by a list of users.
+
+    Args:
+        user_ids: The IDs of the users whose tweets to fetch.
+        max_results: The maximum number of tweets to return per user. Must be between 1 and 100.
+
+    Returns:
+        JSON string mapping user IDs to lists of tweet texts or error messages.
+    """
+    client = ctx.request_context.lifespan_context["twitter_client"]
+    
+    try:
+        tweets_dict: dict[str, list[str]] = {}
+        
+        for uid in user_ids:
+            try:
+                resp = await client.get_user_tweets(
+                    user_id=uid,
+                    max_results=max_results
+                )
+                
+                if resp and resp.data:
+                    tweets_dict[uid] = [t.text for t in resp.data]
+                else:
+                    tweets_dict[uid] = []
+                    
+            except Exception as user_error:
+                # Handle individual user errors gracefully
+                error_msg = str(user_error)
+                if "401" in error_msg or "Unauthorized" in error_msg:
+                    tweets_dict[uid] = [f"Error: Unauthorized access. Twitter API permissions may be insufficient to read tweets for user {uid}"]
+                elif "404" in error_msg or "Not Found" in error_msg:
+                    tweets_dict[uid] = [f"Error: User {uid} not found or account is private/suspended"]
+                elif "403" in error_msg or "Forbidden" in error_msg:
+                    tweets_dict[uid] = [f"Error: Access forbidden for user {uid}. Account may be private or protected"]
+                else:
+                    tweets_dict[uid] = [f"Error retrieving tweets for user {uid}: {error_msg}"]
+                logger.warning(f"Failed to get tweets for user {uid}: {error_msg}")
+        
+        return json.dumps(tweets_dict, ensure_ascii=False, indent=2)
+        
+    except Exception as e:
+        logger.error(f"Unexpected error in get_user_tweets: {str(e)}", exc_info=True)
+        raise ToolError(f"Error retrieving tweets: {str(e)}")
+
+
+@mcp_server.tool()
+async def follow_user(
+    ctx: Context,
+    user_id: str
+) -> str:
+    """
+    Follow another Twitter user by their user ID.
+
+    Args:
+        user_id: The ID of the user to follow.
+
+    Returns:
+        Success message confirming the follow.
+    """
+    client = ctx.request_context.lifespan_context["twitter_client"]
+    
+    try:
+        response = await client.follow_user(user_id)
+        return f"Following user: {response}"
+        
+    except Exception as follow_error:
+        error_msg = str(follow_error)
+        if "404" in error_msg or "Not Found" in error_msg:
+            raise ToolError(f"User {user_id} not found")
+        elif "403" in error_msg or "Forbidden" in error_msg:
+            raise ToolError(f"Cannot follow user {user_id}. Account may be private or you may already be following them")
+        elif "401" in error_msg or "Unauthorized" in error_msg:
+            raise ToolError("Unauthorized. Check Twitter API permissions for following users")
+        else:
+            raise ToolError(f"Error following user {user_id}: {error_msg}")
+
+
+@mcp_server.tool()
+async def retweet_tweet(
+    ctx: Context,
+    tweet_id: str
+) -> str:
+    """
+    Retweet an existing tweet on behalf of the authenticated user.
+
+    Args:
+        tweet_id: The ID of the tweet to retweet.
+
+    Returns:
+        Success message confirming the retweet.
+    """
+    client = ctx.request_context.lifespan_context["twitter_client"]
+    
+    try:
+        response = await client.retweet_tweet(tweet_id)
+        return f"Retweeting tweet: {response}"
+        
+    except Exception as retweet_error:
+        error_msg = str(retweet_error)
+        if "404" in error_msg or "Not Found" in error_msg:
+            raise ToolError(f"Tweet {tweet_id} not found or has been deleted")
+        elif "403" in error_msg or "Forbidden" in error_msg:
+            raise ToolError(f"Cannot retweet {tweet_id}. Tweet may be private or you may have already retweeted it")
+        elif "401" in error_msg or "Unauthorized" in error_msg:
+            raise ToolError("Unauthorized. Check Twitter API permissions for retweeting")
+        else:
+            raise ToolError(f"Error retweeting {tweet_id}: {error_msg}")
+
+
+

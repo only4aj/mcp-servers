@@ -63,6 +63,7 @@ class _TavilyService:
             results = await tool.ainvoke(query)
             
             logger.debug(f"Tavily raw response type: {type(results)}")
+            logger.debug(f"Tavily raw response: {results}")
             
             if not results:
                 logger.warning("Tavily returned empty results.")
@@ -74,13 +75,78 @@ class _TavilyService:
             
             if isinstance(results, str):
                 logger.warning(f"Tavily returned a string instead of a list: {results}")
-                results =  [TavilySearchResult(title="Search Result", url="#", content=results)]
+                return [TavilySearchResult(title="Search Result", url="#", content=results)]
             
-            logger.debug(f"Tavily processed results: {results}")
-            logger.info(f"Tavily search successful, received {len(results)} results.")
-            return [TavilySearchResult(title=result.title, 
-                                       url=result.url, 
-                                       content=result.content) for result in results]
+            # Handle dictionary response from Tavily API
+            if isinstance(results, dict):
+                # Extract the actual search results from the 'results' key
+                search_results = results.get('results', [])
+                if not search_results:
+                    # If no results key, try to use the answer if available
+                    answer = results.get('answer', '')
+                    if answer:
+                        return [TavilySearchResult(title="Search Answer", url="#", content=answer)]
+                    else:
+                        return [TavilySearchResult(title="No Results", url="#", content="No search results found.")]
+                
+                # Process the actual search results
+                processed_results = []
+                for i, result in enumerate(search_results):
+                    if isinstance(result, dict):
+                        title = result.get('title', f"Search Result {i+1}")
+                        url = result.get('url', '#')
+                        content = result.get('content', result.get('snippet', ''))
+                        processed_results.append(TavilySearchResult(title=title, url=url, content=content))
+                    else:
+                        processed_results.append(TavilySearchResult(
+                            title=f"Search Result {i+1}",
+                            url="#",
+                            content=str(result)
+                        ))
+                
+                logger.info(f"Tavily search successful, processed {len(processed_results)} results.")
+                return processed_results
+            
+            # Handle list response (fallback for other formats)
+            if isinstance(results, list):
+                processed_results = []
+                for i, result in enumerate(results):
+                    if isinstance(result, str):
+                        # If result is a string, create a TavilySearchResult with the string as content
+                        processed_results.append(TavilySearchResult(
+                            title=f"Search Result {i+1}", 
+                            url="#", 
+                            content=result
+                        ))
+                    elif hasattr(result, 'title') and hasattr(result, 'url') and hasattr(result, 'content'):
+                        # If result has the expected attributes, use them
+                        processed_results.append(TavilySearchResult(
+                            title=result.title, 
+                            url=result.url, 
+                            content=result.content
+                        ))
+                    elif hasattr(result, 'page_content') and hasattr(result, 'metadata'):
+                        # Handle Document objects from langchain
+                        metadata = result.metadata or {}
+                        processed_results.append(TavilySearchResult(
+                            title=metadata.get('title', f"Search Result {i+1}"),
+                            url=metadata.get('source', '#'),
+                            content=result.page_content
+                        ))
+                    else:
+                        # Fallback for unknown result types
+                        processed_results.append(TavilySearchResult(
+                            title=f"Search Result {i+1}",
+                            url="#",
+                            content=str(result)
+                        ))
+                
+                logger.info(f"Tavily search successful, processed {len(processed_results)} results.")
+                return processed_results
+            
+            # Fallback for unexpected response types
+            logger.warning(f"Unexpected Tavily response type: {type(results)}")
+            return [TavilySearchResult(title="Search Result", url="#", content=str(results))]
 
         except Exception as e:
             logger.error(f"Error during Tavily API call for query '{query}': {e}", exc_info=True)

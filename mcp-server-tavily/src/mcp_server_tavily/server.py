@@ -1,10 +1,11 @@
+from collections.abc import AsyncIterator
 import logging
-from enum import StrEnum
-from typing import AsyncIterator, List, Dict, Any, Optional
+
+from typing import AsyncIterator, List, Dict, Any, Optional, Literal
 from contextlib import asynccontextmanager
-from mcp.server import Server
-from mcp.types import Tool, TextContent
-from pydantic import BaseModel, Field, ValidationError
+
+from fastmcp import Context, FastMCP
+from fastmcp.exceptions import ToolError
 
 from mcp_server_tavily.tavily import (
     _TavilyService, 
@@ -15,113 +16,70 @@ from mcp_server_tavily.tavily import (
 
 logger = logging.getLogger(__name__)
 
-# --- Tool Constants & Enums --- #
-class TavilyToolNames(StrEnum):
-    """Enum for Tavily MCP tool names."""
 
-    WEB_SEARCH = "tavily_web_search"
 
-# --- Tool Input/Output Schemas --- #
-class TavilySearchRequest(BaseModel):
-    """Input schema for the tavily_web_search tool."""
-
-    query: str = Field(..., description="The search query string for Tavily.")
-    max_results: Optional[int] = Field(
-        default=None,
-        description="Optional override for the maximum number of search results.",
-        ge=1
-    )
-
+# --- Lifespan Management --- #
+@asynccontextmanager
+async def app_lifespan(server: FastMCP) -> AsyncIterator[dict[str, Any]]:
+    """Manage server startup/shutdown. Initializes the Tavily service."""
+    logger.info("Lifespan: Initializing services...")
+    
+    try:
+        # Initialize services
+        tavily_service: _TavilyService = get_tavily_service()
+        
+        logger.info("Lifespan: Services initialized successfully")
+        yield {"tavily_service": tavily_service}
+    
+    except TavilyServiceError as init_err:
+        logger.error(f"FATAL: Lifespan initialization failed: {init_err}", exc_info=True)
+        raise init_err
+    
+    except Exception as startup_err:
+        logger.error(f"FATAL: Unexpected error during lifespan initialization: {startup_err}", exc_info=True)
+        raise startup_err
+    
+    finally:
+        logger.info("Lifespan: Shutdown cleanup completed")
 
 # --- MCP Server Initialization --- #
-@asynccontextmanager
-async def server_lifespan(server: Server) -> AsyncIterator[Dict[str, Any]]:
-    """
-    Manage MCP server startup/shutdown. Initializes the Tavily service.
-    """
-    logger.info("MCP Lifespan: Initializing Tavily service...")
-    context = {}
-
-    try:
-        tavily_service = get_tavily_service()
-        context["tavily_service"] = tavily_service
-
-        logger.info("MCP Lifespan: Tavily service initialized successfully.")
-        yield context
-    except TavilyServiceError as e:
-        logger.error(f"FATAL: MCP Lifespan initialization failed: {e}", exc_info=True)
-        raise
-    except Exception as e:
-        logger.error(f"FATAL: Unexpected error during MCP Lifespan initialization: {e}", exc_info=True)
-        raise
-    finally:
-        logger.info("MCP Lifespan: Shutdown.")
-
-
-
-server = Server("tavily-mcp-server", lifespan=server_lifespan)
-
+mcp_server = FastMCP(
+    name="tavily",
+    description="Perform web searches using the Tavily API",
+    lifespan=app_lifespan
+)
 
 # --- Tool Definitions --- #
+@mcp_server.tool()
+async def tavily_web_search(
+    ctx: Context,
+    query: str,  # The search query string for Tavily
+    max_results: int | None = None,  # Optional override for the maximum number of search results (min 1)
+) -> str:
+    """Performs a web search using the Tavily API based on the provided query."""
+    tavily_service = ctx.request_context.lifespan_context["tavily_service"]
 
-
-@server.list_tools()
-async def list_tools() -> list[Tool]:
-    """Lists the tools available in this MCP server."""
-    logger.debug("Listing available tools.")
-
-    return [
-        Tool(
-            name=TavilyToolNames.WEB_SEARCH.value,
-            description="Performs a web search using the Tavily API based on the provided query.",
-            inputSchema=TavilySearchRequest.model_json_schema(),
+    try:
+        # Execute core logic
+        search_results: list[TavilySearchResult] = await tavily_service.search(
+            query=query,
+            max_results=max_results
         )
-    ]
-
-@server.call_tool()
-async def call_tool(name: str, arguments: dict) -> list[TextContent]:
-    """Handles incoming tool calls for the Tavily MCP server."""
-    logger.info(f"Received call_tool request for '{name}' with args: {arguments}")
-
-    # Retrieve the service instance from lifespan context
-    tavily_service: _TavilyService = server.request_context.lifespan_context["tavily_service"]
-
-    # --- Tool Business Logic --- #
-    match name:
-        case TavilyToolNames.WEB_SEARCH.value:
         
-            try:
-                # 1. Validate Input 
-                request_model = TavilySearchRequest(**arguments)
-                
-                # 2. Execute Core Logic using the service
-                search_results: List[TavilySearchResult] = await tavily_service.search(
-                    query=request_model.query,
-                    max_results=request_model.max_results 
-                )
-                
-                formatted_response = "\n\n".join([str(result) for result in search_results])
-                return [TextContent(type="text", text=formatted_response)]
-
-            except ValidationError as ve:
-                error_msg = f"Invalid arguments for tool '{name}': {ve}"
-                logger.warning(error_msg)
-                return [TextContent(type="text", text=error_msg)]
-
-            except ValueError as val_err: 
-                error_msg = f"Input validation error for tool '{name}': {val_err}"
-                logger.warning(error_msg)
-                return [TextContent(type="text", text=error_msg)]
-
-            except TavilyServiceError as client_err:
-                error_msg = f"Tavily client error processing tool '{name}': {client_err}"
-                logger.error(error_msg, exc_info=True)
-                return [TextContent(type="text", text=error_msg)]
-
-            except Exception as e:
-                error_msg = f"An unexpected internal error occurred processing tool '{name}'."
-                logger.error(f"{error_msg} Details: {e}", exc_info=True)
-                return [TextContent(type="text", text=error_msg)]
-
-        case _:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+        # Format response
+        formatted_response = "\n\n".join([str(result) for result in search_results])
+        logger.info(f"Successfully processed search request with {len(search_results)} results")
+        
+        return formatted_response
+    
+    except ValueError as val_err:
+        logger.warning(f"Input validation error: {val_err}")
+        raise ToolError(f"Input validation error: {val_err}") from val_err
+    
+    except TavilyServiceError as service_err:
+        logger.error(f"Tavily service error: {service_err}", exc_info=True)
+        raise ToolError(f"Tavily service error: {service_err}") from service_err
+    
+    except Exception as e:
+        logger.error(f"Unexpected error during search: {e}", exc_info=True)
+        raise ToolError("An unexpected error occurred during search.") from e

@@ -1,90 +1,76 @@
-# MCP Servers Collection
+# MCP Servers - Unified Runner
 
-> **General:** This repository hosts a collection of Model Context Protocol (MCP) servers, each providing specific functionality through a standardized interface.
-> All servers follow a consistent pattern and are implemented in Python with Server-Sent Events (SSE) transport.
+This repository contains multiple [MCP (Model Context Protocol)](https://example.com/link-to-mcp-docs) server implementations.
+It provides a unified Docker environment to build and run any of the contained servers.
 
+Currently supported servers:
 
+*   **imgen**: Generates images from text prompts using Google Vertex AI.
+*   **qdrant**: Retrieves context from a Qdrant vector database.
+*   **telegram**: Posts messages to a Telegram channel via a single API tool.
+*   **youtube**: Retrieves transcripts of videos.
+*   **twitter**: Interacts with Twitter/X API for posting tweets, following users, and retrieving user tweets.
+*   **tavily**: Performs web searches using the Tavily search API.
+*   **arxiv**: Searches and retrieves academic papers from arXiv.
+*   **stability**: Generates images using Stability AI's SDXL models.
 
-## Key Features
+## Structure
 
-- **Standardized Implementation**: All servers follow the pattern established in the template server
-- **Python-Based**: Built with Python 3.12+ and modern language features
-- **SSE Transport**: Exclusively uses Server-Sent Events for communication
-- **Modular Design**: Each server is a self-contained module with its own configuration
-- **Consistent Documentation**: Standardized README structure across all servers
-- **Docker Support**: All servers include containerization support
+*   `/`: Contains the unified Dockerfile, docker-compose files, consolidated configuration (`pyproject.toml`, `.env.example`), and this README.
+*   `/mcp-server-imgen`: Contains the source code and specific files for the Image Generation server.
+*   `/mcp-server-qdrant`: Contains the source code and specific files for the Qdrant server.
+*   `/mcp-server-telegram`: Contains the source code and specific files for the Telegram server.
+*   `/mcp-server-youtube`: Contains the source code and specific files for the YouTube transcript server.
+*   `/mcp-server-twitter`: Contains the source code and specific files for the Twitter server.
+*   `/mcp-server-tavily`: Contains the source code and specific files for the Tavily search server.
+*   `/mcp-server-arxiv`: Contains the source code and specific files for the arXiv server.
+*   `/mcp-server-stability`: Contains the source code and specific files for the Stability AI server.
 
-## Available Servers
+## Getting Started
 
-1. **MCP Template Server** (`mcp-server-template/`)
-   - Base template for creating new MCP servers
-   - Includes calculator functionality as an example
-   - Reference implementation for all other servers
+### Prerequisites
 
-2. **MCP YouTube Server** (`mcp-server-youtube/`)
-   - YouTube video search and transcript retrieval
-   - Uses YouTube Data API v3 and transcript extraction
+*   Docker
+*   `uv` (optional, for local development/dependency management if not using Docker exclusively)
 
-## Common Requirements
+### Building the Unified Docker Image
 
-All servers share these base requirements:
-- Python 3.12+
-- Docker (optional, for containerization)
-- Environment-based configuration
-- Type hints and modern Python syntax
+From the root directory of this repository (`mcp-servers/`), run:
+
+```bash
+docker build -t mcp-server-unified .
+```
+
+This command builds a single Docker image tagged `mcp-server-unified` containing the code and dependencies for all supported servers.
+
+### Running a Specific Server
+
+You select which server to run by overriding the container's CMD to launch the specific module directly.
+
+**Example - Running the Stability AI Server:**
+
+```bash
+docker run --rm -it \
+  -p 8003:8000 \
+  --env-file .env \
+  mcp-server-unified \
+  python -m mcp_server_stability
+```
+
+**Note:** Make sure to create a `.env` file in the root directory containing the necessary credentials for your chosen service (based on `.env.example`).
+
+The service will be available on `http://localhost:8003`.
+
+## Development
+
+While the primary way to run the servers is via the unified Docker container, you can still develop the individual services locally.
+
+*   Ensure you have `uv` installed.
+*   It's recommended to manage dependencies using the top-level `pyproject.toml` and `uv.lock` to maintain consistency with the Docker build.
+*   You can potentially create separate virtual environments for each service if needed, but sync them from the root `uv.lock`.
 
 ## Contributing
 
-We welcome contributions of new MCP servers! Please follow these guidelines:
+(Add contribution guidelines here)
 
-1. **Use the Template**: Start with `mcp-server-template/` as your base
-2. **Follow the Pattern**: Maintain the established project structure
-3. **Documentation**: Include a comprehensive README following the template format
-4. **Testing**: Provide example usage and test cases
-5. **Type Safety**: Use type hints throughout the code
-6. **Modern Python**: Utilize Python 3.12+ features
-7. **Environment Config**: No hardcoded values, use environment variables
-8. **Docker Support**: Include Dockerfile and docker-compose if needed
 
-### Adding a New Server
-
-1. Copy the template server:
-   ```bash
-   cp -r mcp-server-template mcp-server-your-service
-   ```
-
-2. Update the following:
-   - README.md with your service details
-   - pyproject.toml with your dependencies
-   - Implementation in src/
-   - Environment variables in .env.example
-
-3. Submit a pull request with your new server
-
-## Project Structure
-
-Each server follows this structure:
-```
-mcp-server-{name}/
-├── src/
-│   └── mcp_server_{name}/
-│       └── {name}/
-│           ├── __init__.py
-│           ├── config.py
-│           ├── module.py
-│       ├── __init__.py
-│       ├── __main__.py
-│       ├── logging_config.py
-│       ├── server.py
-├── .env.example
-├── .gitignore
-├── Dockerfile
-├── LICENSE
-├── pyproject.toml
-├── README.md
-└── dependency.lock
-```
-
-## License
-
-MIT

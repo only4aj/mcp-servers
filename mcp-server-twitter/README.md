@@ -1,122 +1,136 @@
-# MCP Twitter Server
+# MCP Server for Twitter
 
-> **General:** Twitter integration microservice implementing Model Context Protocol (MCP).
+This repository provides an MCP (Multi-Context Prompting) server implementation for Twitter actions. It exposes the following tools:
 
-## Overview
+## Available Tools
 
-This server provides Twitter functionality through MCP with the following features:
-- Create tweets with media attachments and polls
-- Retrieve user tweets
-- Follow Twitter users
+### create_tweet
+Create a new tweet with optional media, polls, replies or quotes.
 
-## MCP Tools
+**Args:**
+- `text` (str): The text content of the tweet. Will be truncated to the configured maximum tweet length if necessary.
+- `image_content` (optional, str): A Base64-encoded string of image data to attach as media. Requires media uploads to be enabled in config.
+- `poll_options` (optional, list[str]): A list of 2 to 4 options to include in a poll.
+- `poll_duration` (optional, int): Duration of the poll in minutes (must be between 5 and 10080).
+- `in_reply_to_tweet_id` (optional, str): The ID of an existing tweet to reply to. Your text must include the author’s `@username`.
+- `quote_tweet_id` (optional, str): The ID of an existing tweet to quote.
 
-1. `create_tweet`
-   - **Description:** Post a tweet with optional media and poll
-   - **Input:**
-     - text (string)
-     - image_content (base64 string, optional)
-     - poll_options (list of strings, 2-4 items)
-     - poll_duration (integer, 5-10080 minutes)
+**Returns:**
+- `str`: The ID of the created tweet on success, or an error message string.
 
-2. `get_user_tweets`
-   - **Description:** Retrieve recent tweets from a user
-   - **Input:**
-     - user_id (string)
-     - max_results (integer, 1-100)
+### get_user_tweets
+Retrieve recent tweets posted by a list of users.
 
-3. `follow_user`
-   - **Description:** Follow a Twitter user
-   - **Input:**
-     - user_id (string)
+**Args:**
+- `user_ids` (List[str]): A list of Twitter user IDs whose tweets to fetch.
+- `max_results` (optional, int): The maximum number of tweets to return per user (1–100, default 10).
 
-## Requirements
+**Returns:**
+- `dict`: A mapping from user ID to a list of tweet texts, e.g. `{ "12345": ["Tweet1", "Tweet2"], "67890": ["Another tweet"] }`.
 
-- Python 3.12+
-- Docker (optional)
-- Twitter API credentials
+### follow_user
+Follow another Twitter user by their user ID.
 
-## Setup
+**Args:**
+- `user_id` (str): The ID of the user to follow.
 
-1. **Clone the Repository**:
-   ```bash
-   git clone <repository-url>
-   cd mcp-server-template
-   ```
+**Returns:**
+- `str`: A success message confirming the follow.
 
-2. **Create `.env` File based on `.env.example`**:
-   ```dotenv
-   # Example environment variables
-   MCP_CALCULATOR_HOST="0.0.0.0"
-   MCP_CALCULATOR_PORT=8000
-   LOGGING_LEVEL="info"
-   ```
+### retweet_tweet
+Retweet an existing tweet on behalf of the authenticated user.
 
-3. **Install Dependencies**:
-   ```bash
-   uv sync .
-   ```
+**Args:**
+- `tweet_id` (str): The ID of the tweet to retweet.
+
+**Returns:**
+- `str`: A success message confirming the retweet.
+
+## Configuration
+
+Create a `.env` file in the root directory containing:
+
+```
+TWITTER_API_KEY=<your_api_key>
+TWITTER_API_SECRET_KEY=<your_api_secret_key>
+TWITTER_ACCESS_TOKEN=<your_access_token>
+TWITTER_ACCESS_TOKEN_SECRET=<your_access_token_secret>
+TWITTER_BEARER_TOKEN=<your_bearer_token>
+```
 
 ## Running the Server
 
-### Locally
+Build and run the Docker container:
 
 ```bash
-# Basic run
-python -m mcp_server_twitter
-
-# Custom port and host
-python -m mcp_server_twitter --host 0.0.0.0 --port 8008
-```
-
-### Using Docker
-
-```bash
-# Build the image
 docker build -t mcp_server_twitter .
 docker run -p 8008:8008 --env-file .env mcp_server_twitter
 ```
 
+The server will be available at `http://localhost:8008/sse`.
+
 ## Example Client
-When server startup is completed, any MCP client
-can utilize connection to it
 
 ```python
-from mcp import Client
+import os
+import asyncio
+import uuid
 
-async with Client("http://localhost:8008/sse") as client:
-    # Create tweet
-    await client.call_tool("create_tweet", {
-        "text": "Hello Twitter!",
-        "image_content": "base64_image_data",
-        "poll_options": ["Option 1", "Option 2"],
-        "poll_duration": 1440
+from dotenv import load_dotenv
+from langchain_core.messages import ToolMessage
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from langgraph.prebuilt import create_react_agent
+from langchain_together import ChatTogether
+from langchain_core.tools import StructuredTool
+
+async def main():
+    # Load environment variables from .env, should contain OPENAI_API_KEY
+    load_dotenv()
+    TOGETHER_TOKEN = os.getenv("TOGETHER_TOKEN")
+    # Initialize LLM
+    model = ChatTogether(
+        together_api_key=TOGETHER_TOKEN,
+        model="meta-llama/Meta-Llama-3.1-405B-Instruct-Turbo"
+    )
+
+    # Connect to MCP server
+    client = MultiServerMCPClient({
+        "calculate": {
+            "url": "http://localhost:8008/sse",
+            "transport": "sse",
+        }
     })
-    
-    # Get user tweets
-    tweets = await client.call_tool("get_user_tweets", {
-        "user_id": "12345",
-        "max_results": 10
+
+    # Get available tools
+    tools: list[StructuredTool] = await client.get_tools()
+    c_t = None
+    for tool in tools:
+        tool.return_direct = True
+        if tool.name == "create_tweet":
+            c_t = tool
+
+    # Use case 1: Create agent with tools
+    agent = create_react_agent(model, tools)
+
+    # Example query using the agent
+    response = await agent.ainvoke({
+        "messages": [{
+            "role": "user",
+            "content": "Create a tweet about oranges"
+        }]
     })
+    print(response["messages"][-1].content)
+
+    # Use case 2: Direct tool call
+    image = "your base64 image"
+    result: ToolMessage = await c_t.arun(
+        tool_input={"text": "apples", "image_content": image},
+        type=dict,
+        response_format="content_and_artifact",
+        tool_call_id=uuid.uuid4()
+    )
+    print("Tool result:", result)
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
-
-## Project Structure
-
-```
-mcp-server-twitter/
-├── src/
-│   └── mcp_server_twitter/
-│       ├── twitter/          # Core Twitter logic
-│       ├── __init__.py
-│       ├── server.py         # MCP server setup
-│       └── __main__.py       
-├── .env.example
-├── Dockerfile
-├── pyproject.toml
-└── README.md
-```
-
-
-## License
-
-MIT

@@ -1,15 +1,13 @@
 ### src/mcp_server_telegram/server.py
 import logging
-from enum import StrEnum
+
 from typing import AsyncIterator, List, Dict, Any, Literal
 from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 from fastmcp import Context, FastMCP
 from fastmcp.exceptions import ToolError
 
-from mcp.server import Server
-from mcp.types import Tool, TextContent
-from pydantic import BaseModel, Field, ValidationError
+
 
 from mcp_server_telegram.telegram import (
     _TelegramService,
@@ -20,15 +18,7 @@ from mcp_server_telegram.telegram import (
 
 logger = logging.getLogger(__name__)
 
-# --- Tool Constants & Enums --- #
-class TelegramToolNames(StrEnum):
-    """Enum for Telegram MCP tool names."""
-    POST_MESSAGE = "post_to_telegram"
 
-# --- Tool Input/Output Schemas --- #
-class TelegramPostRequest(BaseModel):
-    """Input schema for the post_to_telegram tool."""
-    message: str = Field(..., description="The text message content to post to the Telegram channel.")
 
 # --- Lifespan Management --- #
 @asynccontextmanager
