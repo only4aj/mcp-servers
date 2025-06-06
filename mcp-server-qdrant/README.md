@@ -48,7 +48,7 @@ This MCP server exposes Qdrant vector database functionality through the Model C
 
 1. **Clone the Repository**:
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/Xyber-Labs/mcp-servers
    cd mcp-servers/mcp-server-qdrant
    ```
 
@@ -90,7 +90,6 @@ python -m mcp_server_qdrant
 
 # Custom port and host
 python -m mcp_server_qdrant --host 0.0.0.0 --port 8000
-
 ```
 
 ### Using Docker
@@ -100,7 +99,30 @@ python -m mcp_server_qdrant --host 0.0.0.0 --port 8000
 docker build -t mcp-server-qdrant .
 
 # Run the container
-docker run --rm -it -p 8005:8000 --env-file .env mcp-server-qdrant
+docker run --rm -p 8005:8000 --env-file .env mcp-server-qdrant
+```
+
+### Using Docker Compose (Recommended)
+
+This repository provides a `docker-compose.yml` for easy setup of both the MCP server and a persistent Qdrant instance. Qdrant's data will be stored in a Docker-managed volume (`qdrant-data`) to ensure your collections and vectors persist across restarts.
+
+```bash
+# Start both MCP server and Qdrant (with persistent storage)
+docker compose up --build
+```
+
+- The MCP server will be available at [http://localhost:8005](http://localhost:8005)
+- Qdrant's REST API will be available at [http://localhost:6333](http://localhost:6333)
+- Qdrant's data is stored in the `qdrant-data` Docker volume (see `docker-compose.yml`)
+
+To stop and remove containers (but keep data):
+```bash
+docker compose down
+```
+
+To remove all data as well:
+```bash
+docker compose down -v
 ```
 
 ## Example Client
