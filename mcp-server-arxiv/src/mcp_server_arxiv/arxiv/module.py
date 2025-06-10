@@ -269,7 +269,7 @@ def get_arxiv_service() -> _ArxivService:
     """
     logger.debug("Attempting to get _ArxivService instance...")
     try:
-        config = ArxivConfig  # Load and validate config
+        config = ArxivConfig()  # Load and validate config
         service_instance = _ArxivService(config=config)
         logger.info("_ArxivService instance created successfully via get_arxiv_service.")
         return service_instance
